@@ -140,21 +140,114 @@ Los requisitos no funcionales establecen las condiciones de calidad y operación
 | RNF-11 | Recuperación | Permitir restaurar una versión previamente aprobada del servicio y sus artefactos ante fallas de despliegue. | Registro de versiones + imágenes Docker + rollback |
 | RNF-12 | Observabilidad | Recopilar métricas de latencia, errores, disponibilidad y calidad de datos, con alertas y responsables definidos. | Prometheus + Grafana + Evidently |
 
-### 4.3. Criterios de aceptación y validación de la arquitectura
-
-El cumplimiento de los requisitos será verificado mediante diferentes mecanismos, de acuerdo con la naturaleza de cada componente:
-
-- **Datos:** pruebas de calidad, validación de esquemas, controles de duplicados, consistencia y trazabilidad de las cargas.
-- **Modelos:** evaluación con conjuntos independientes, métricas por enfermedad, análisis de errores, calibración y validación clínica.
-- **Inferencia:** pruebas funcionales de la API, validación de entradas, pruebas de carga y medición de latencia.
-- **CI/CD:** ejecución automatizada de pruebas, construcción de imágenes, verificación de artefactos y control de versiones.
-- **Seguridad:** revisión de permisos, autenticación, cifrado, manejo de secretos y cumplimiento de políticas institucionales.
-- **Monitoreo:** validación de métricas, alertas, seguimiento del desempeño y procedimientos de respuesta ante incidentes.
-- **Recuperación:** pruebas de restauración de servicios y retorno a versiones previamente aprobadas.
-
 La aprobación técnica de una nueva versión no implica automáticamente su autorización para uso clínico. Los modelos deberán cumplir criterios de desempeño y seguridad definidos junto con los responsables clínicos antes de su puesta en producción.
 
 Los requisitos establecidos en esta sección servirán como base para las decisiones de arquitectura y la selección justificada de tecnologías en las siguientes etapas del pipeline.
+
+
+## 5. Arquitectura general y flujos de procesamiento
+
+### 5.1. Enfoque arquitectónico
+
+Se propone una arquitectura MLOps modular que combina procesamiento batch para la preparación de datos y el entrenamiento de modelos, con inferencia online para atender las consultas médicas.
+
+La arquitectura separa los procesos de datos, entrenamiento, despliegue e inferencia, permitiendo que los modelos en producción continúen operando de manera independiente de los procesos de actualización.
+
+Se establecen tres flujos principales:
+
+- **Flujo A - Datos (batch):** ingestión diaria de información clínica, validación, limpieza y preparación de datasets mediante una arquitectura Medallion (Bronze, Silver y Gold).
+- **Flujo B - Inferencia (online):** consultas de los médicos a través de una aplicación web que consume una API de predicción.
+- **Flujo C - Monitoreo y reentrenamiento:** seguimiento continuo de la operación, evaluación periódica del desempeño y actualización controlada de los modelos.
+
+### 5.2. Diagrama general de arquitectura
+
+El siguiente diagrama representa los principales componentes y sus interacciones:
+
+```mermaid
+flowchart TB
+    subgraph A["A. Datos clínicos - Batch"]
+        SRC["Historias clínicas y diagnósticos"]
+        AIR["Apache Airflow"]
+        BR["Bronze - MinIO/S3"]
+        SI["Silver - Limpieza y validación"]
+        GO["Gold - Datasets preparados"]
+        SRC --> AIR --> BR --> SI --> GO
+    end
+
+    subgraph B["B. Entrenamiento y registro"]
+        TR["Entrenamiento y validación"]
+        MG["Modelo general"]
+        MR["Modelo especializado"]
+        ML["MLflow - Model Registry"]
+        GO --> TR
+        TR --> MG
+        TR --> MR
+        MG --> ML
+        MR --> ML
+    end
+
+    subgraph C["C. CI/CD y despliegue"]
+        GH["GitHub + GitHub Actions"]
+        REG["GHCR - Docker"]
+        DEP["Despliegue aprobado"]
+        GH --> REG --> DEP
+        ML --> DEP
+    end
+
+    subgraph D["D. Inferencia online"]
+        MED["Aplicación médica"]
+        API["Nginx + FastAPI"]
+        INF["Servicio de inferencia"]
+        DEC["Integración de resultados"]
+        OUT["Resultados y alertas"]
+        AUD["PostgreSQL - Auditoría"]
+        MED --> API --> INF --> DEC --> OUT
+        OUT --> MED
+        DEC --> AUD
+        DEP --> INF
+    end
+
+    subgraph E["E. Monitoreo y reentrenamiento"]
+        MON["Prometheus + Grafana + Evidently"]
+        REV["Evaluación y aprobación"]
+        RET["Reentrenamiento - Airflow"]
+        MON --> REV
+        REV --> RET
+        RET --> TR
+    end
+
+    API --> MON
+    AUD --> MON
+    SI --> MON
+```
+
+### 5.3. Flujos de procesamiento
+
+| Flujo | Procesamiento | Frecuencia o disparador | Tecnologías principales |
+|---|---|---|---|
+| Ingestión de datos clínicos | Batch incremental | Diario | Airflow, Python, MinIO/S3 |
+| Limpieza y transformación | Batch | Después de cada ingestión | Pandas, Pandera, Parquet |
+| Entrenamiento y evaluación | Batch | Bajo demanda o reentrenamiento autorizado | Scikit-learn, XGBoost, Optuna |
+| Registro de modelos | Por evento | Al aprobar un modelo candidato | MLflow |
+| Integración y despliegue | Por evento | Cambios aprobados en código o modelos | GitHub Actions, Docker, GHCR |
+| Predicción clínica | Online síncrono | Solicitud del médico | FastAPI, Pydantic |
+| Monitoreo operativo | Continuo | Durante la operación | Prometheus, Grafana |
+| Evaluación de drift | Batch periódico | Programado | Evidently |
+| Reentrenamiento | Batch condicionado | Nuevos datos o degradación confirmada | Airflow, MLflow |
+
+### 5.4. Decisiones principales
+
+**Batch frente a streaming:** se selecciona ingestión batch diaria porque los datos históricos no requieren procesamiento continuo. No se incorpora Kafka inicialmente, evitando complejidad operativa innecesaria.
+
+**Inferencia online:** se utiliza una API REST con FastAPI para atender solicitudes síncronas de los médicos. La necesidad de obtener respuestas inmediatas no implica utilizar una plataforma de streaming.
+
+**Procesamiento de datos:** se propone Pandas para el volumen histórico estimado de 500.000 registros. Spark se considera una alternativa de evolución si el volumen o los tiempos de procesamiento superan la capacidad disponible.
+
+**Despliegue:** se prioriza un servidor institucional mediante Docker, permitiendo centralizar seguridad, actualizaciones y monitoreo. Se contempla ejecución local para modelos livianos.
+
+**Independencia operativa:** los modelos aprobados y sus transformaciones permanecerán disponibles en el servicio de inferencia, evitando depender de Airflow, del Data Lake o de MLflow para responder cada consulta.
+
+Las decisiones anteriores se desarrollarán y justificarán en las siguientes secciones de diseño técnico.
 
 
 

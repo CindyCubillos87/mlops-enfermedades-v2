@@ -166,9 +166,9 @@ La siguiente arquitectura representa el ciclo de vida end-to-end de la solución
 
 La propuesta conserva seis componentes principales: Data Ingestion, Data Processing & Feature Engineering, Model Engineering & Registry, Model Deployment (CI/CD), Serving & Prediction y Model Monitoring & Retraining.
 
-![Arquitectura MLOps V2](docs/arquitectura ajustada_v2.drawio.png)
+![Arquitectura MLOps V2](docs/arquitectura%20ajustada_v2.drawio.png)
 
-[Consultar arquitectura original — Unidad 1](docs/Arquitectura U1.png)
+[Consultar arquitectura original - Unidad 1](docs/Arquitectura%20MLOPS.pdf)
 
 
 ### 5.3. Flujos de procesamiento

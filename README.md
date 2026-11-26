@@ -145,57 +145,48 @@ La aprobación técnica de una nueva versión no implica automáticamente su aut
 Los requisitos establecidos en esta sección servirán como base para las decisiones de arquitectura y la selección justificada de tecnologías en las siguientes etapas del pipeline.
 
 
+
 ## 5. Arquitectura general y flujos de procesamiento
 
 ### 5.1. Enfoque arquitectónico
 
-Se propone una arquitectura MLOps modular que combina procesamiento batch para la preparación de datos y el entrenamiento de modelos, con inferencia online para atender las consultas médicas.
+Se propone una arquitectura MLOps modular, con infraestructura principal on-premises en servidores de la institución de salud. Combina procesamiento batch para la gestión de datos y el entrenamiento de modelos, con inferencia online para atender las consultas médicas.
 
-La arquitectura separa los procesos de datos, entrenamiento, despliegue e inferencia, permitiendo que los modelos en producción continúen operando de manera independiente de los procesos de actualización.
-
-Se establecen tres flujos principales:
-
-- **Flujo A - Datos (batch):** ingestión diaria de información clínica, validación, limpieza y preparación de datasets mediante una arquitectura Medallion (Bronze, Silver y Gold).
-- **Flujo B - Inferencia (online):** consultas de los médicos a través de una aplicación web que consume una API de predicción.
-- **Flujo C - Monitoreo y reentrenamiento:** seguimiento continuo de la operación, evaluación periódica del desempeño y actualización controlada de los modelos.
-
+La arquitectura separa los procesos de ingestión, procesamiento, entrenamiento, despliegue e inferencia, permitiendo que el servicio predictivo continúe funcionando independientemente de las actividades de actualización de los modelos.
 
 ### 5.2. Diagrama general de arquitectura
 
-La siguiente arquitectura representa el ciclo de vida end-to-end de la solución MLOps, desde la ingestión y preparación de los datos clínicos hasta el despliegue, inferencia, monitoreo y reentrenamiento de los modelos.
-
-La propuesta conserva seis componentes principales: Data Ingestion, Data Processing & Feature Engineering, Model Engineering & Registry, Model Deployment (CI/CD), Serving & Prediction y Model Monitoring & Retraining.
+El siguiente diagrama representa el pipeline MLOps end-to-end, desde la ingestión y preparación de información clínica hasta el despliegue, inferencia, monitoreo y reentrenamiento de modelos.
 
 ![Arquitectura MLOps V2](docs/arquitectura%20ajustada_v2.drawio.png)
 
 [Consultar arquitectura original - Unidad 1](docs/Arquitectura%20MLOPS.pdf)
 
-
 ### 5.3. Flujos de procesamiento
 
-| Flujo | Procesamiento | Frecuencia o disparador | Tecnologías principales |
+| Proceso | Modalidad | Frecuencia o disparador | Tecnologías |
 |---|---|---|---|
-| Ingestión de datos clínicos | Batch incremental | Diario | Airflow, Python, MinIO/S3 |
-| Limpieza y transformación | Batch | Después de cada ingestión | Pandas, Pandera, Parquet |
+| Ingestión de datos clínicos | Batch incremental | Diario | Airflow, APIs, Python |
+| Procesamiento y validación | Batch | Después de la ingestión | Pandas, Pandera, MinIO, Parquet |
 | Entrenamiento y evaluación | Batch | Bajo demanda o reentrenamiento autorizado | Scikit-learn, XGBoost, Optuna |
-| Registro de modelos | Por evento | Al aprobar un modelo candidato | MLflow |
-| Integración y despliegue | Por evento | Cambios aprobados en código o modelos | GitHub Actions, Docker, GHCR |
-| Predicción clínica | Online síncrono | Solicitud del médico | FastAPI, Pydantic |
+| Registro de modelos | Por evento | Modelo validado | MLflow |
+| CI/CD y despliegue | Por evento | Cambios aprobados en código o modelos | GitHub Actions, Docker, GHCR |
+| Predicción clínica | Online síncrono | Solicitud del médico | Nginx, FastAPI, Pydantic |
 | Monitoreo operativo | Continuo | Durante la operación | Prometheus, Grafana |
 | Evaluación de drift | Batch periódico | Programado | Evidently |
-| Reentrenamiento | Batch condicionado | Nuevos datos o degradación confirmada | Airflow, MLflow |
+| Reentrenamiento | Batch condicionado | Nuevos datos, degradación o evidencia médica | Airflow, MLflow |
 
-### 5.4. Decisiones principales
+### 5.4. Decisiones arquitectónicas principales
 
-**Batch frente a streaming:** se selecciona ingestión batch diaria porque los datos históricos no requieren procesamiento continuo. No se incorpora Kafka inicialmente, evitando complejidad operativa innecesaria.
+- **Batch frente a streaming:** se selecciona ingestión batch diaria porque los registros clínicos históricos no requieren procesamiento continuo. No se incorpora Kafka inicialmente, evitando complejidad operativa innecesaria.
+- **Procesamiento de datos:** se utiliza una arquitectura Medallion (Bronze, Silver y Gold), con MinIO como almacenamiento de objetos y Pandas/Pandera para las transformaciones y validaciones. Spark se contempla como alternativa si aumenta significativamente el volumen de datos.
+- **Inferencia online:** se utiliza FastAPI para responder solicitudes síncronas de los médicos. Los modelos y sus transformaciones se mantienen cargados en memoria.
+- **Despliegue:** GitHub Actions automatiza las pruebas y la publicación de imágenes Docker en GHCR. El despliegue en servidores clínicos requiere aprobación y permite regresar a una versión anterior.
+- **Infraestructura:** se prioriza una solución on-premises mediante Docker Compose, Nginx y contenedores FastAPI. Se contempla ejecución local en el computador del médico para modelos livianos.
+- **Independencia operativa:** las predicciones no dependen de la ejecución de Airflow, del Data Lake ni de MLflow. Estos componentes se utilizan fuera del proceso de inferencia.
 
-**Inferencia online:** se utiliza una API REST con FastAPI para atender solicitudes síncronas de los médicos. La necesidad de obtener respuestas inmediatas no implica utilizar una plataforma de streaming.
+Las tecnologías, los mecanismos de integración, los controles de seguridad y las decisiones de implementación se detallan en las siguientes secciones.
 
-**Procesamiento de datos:** se propone Pandas para el volumen histórico estimado de 500.000 registros. Spark se considera una alternativa de evolución si el volumen o los tiempos de procesamiento superan la capacidad disponible.
-
-**Despliegue:** se prioriza un servidor institucional mediante Docker, permitiendo centralizar seguridad, actualizaciones y monitoreo. Se contempla ejecución local para modelos livianos.
-
-**Independencia operativa:** los modelos aprobados y sus transformaciones permanecerán disponibles en el servicio de inferencia, evitando depender de Airflow, del Data Lake o de MLflow para responder cada consulta.
 
 Las decisiones anteriores se desarrollarán y justificarán en las siguientes secciones de diseño técnico.
 

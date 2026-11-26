@@ -159,67 +159,17 @@ Se establecen tres flujos principales:
 - **Flujo B - Inferencia (online):** consultas de los médicos a través de una aplicación web que consume una API de predicción.
 - **Flujo C - Monitoreo y reentrenamiento:** seguimiento continuo de la operación, evaluación periódica del desempeño y actualización controlada de los modelos.
 
+
 ### 5.2. Diagrama general de arquitectura
 
-El siguiente diagrama representa los principales componentes y sus interacciones:
+La siguiente arquitectura representa el ciclo de vida end-to-end de la solución MLOps, desde la ingestión y preparación de los datos clínicos hasta el despliegue, inferencia, monitoreo y reentrenamiento de los modelos.
 
-```mermaid
-flowchart TB
-    subgraph A["A. Datos clínicos - Batch"]
-        SRC["Historias clínicas y diagnósticos"]
-        AIR["Apache Airflow"]
-        BR["Bronze - MinIO/S3"]
-        SI["Silver - Limpieza y validación"]
-        GO["Gold - Datasets preparados"]
-        SRC --> AIR --> BR --> SI --> GO
-    end
+La propuesta conserva seis componentes principales: Data Ingestion, Data Processing & Feature Engineering, Model Engineering & Registry, Model Deployment (CI/CD), Serving & Prediction y Model Monitoring & Retraining.
 
-    subgraph B["B. Entrenamiento y registro"]
-        TR["Entrenamiento y validación"]
-        MG["Modelo general"]
-        MR["Modelo especializado"]
-        ML["MLflow - Model Registry"]
-        GO --> TR
-        TR --> MG
-        TR --> MR
-        MG --> ML
-        MR --> ML
-    end
+![Arquitectura MLOps V2](docs/arquitectura ajustada_v2.drawio.png)
 
-    subgraph C["C. CI/CD y despliegue"]
-        GH["GitHub + GitHub Actions"]
-        REG["GHCR - Docker"]
-        DEP["Despliegue aprobado"]
-        GH --> REG --> DEP
-        ML --> DEP
-    end
+[Consultar arquitectura original — Unidad 1](docs/Arquitectura U1.png)
 
-    subgraph D["D. Inferencia online"]
-        MED["Aplicación médica"]
-        API["Nginx + FastAPI"]
-        INF["Servicio de inferencia"]
-        DEC["Integración de resultados"]
-        OUT["Resultados y alertas"]
-        AUD["PostgreSQL - Auditoría"]
-        MED --> API --> INF --> DEC --> OUT
-        OUT --> MED
-        DEC --> AUD
-        DEP --> INF
-    end
-
-    subgraph E["E. Monitoreo y reentrenamiento"]
-        MON["Prometheus + Grafana + Evidently"]
-        REV["Evaluación y aprobación"]
-        RET["Reentrenamiento - Airflow"]
-        MON --> REV
-        REV --> RET
-        RET --> TR
-    end
-
-    API --> MON
-    AUD --> MON
-    SI --> MON
-```
 
 ### 5.3. Flujos de procesamiento
 

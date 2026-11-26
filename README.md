@@ -36,7 +36,7 @@ La propuesta contempla el ciclo de vida completo de Machine Learning:
 
 La arquitectura contempla dos modalidades de ejecución para facilitar su adopción en diferentes entornos clínicos:
 
-* Despliegue centralizado (modalidad principal): los modelos estarán alojados en un servidor institucional o servicio de nube privada, y los profesionales médicos podrán realizar solicitudes de predicción mediante una aplicación web que se comunica con una API. Esta alternativa permite centralizar la administración, seguridad, monitoreo y actualización de los modelos.
+* Despliegue centralizado (modalidad principal): los modelos estarán alojados en servidores de la institución de salud (infraestructura on-premises), y los profesionales médicos podrán realizar solicitudes de predicción mediante una aplicación web que se comunica con una API. Esta alternativa permite centralizar la administración, seguridad, monitoreo y actualización de los modelos.
   
 * Despliegue local (modalidad alternativa): cuando los modelos tengan bajos requerimientos computacionales, la solución podrá ejecutarse directamente en el computador del médico mediante un contenedor Docker. En este escenario, la aplicación y los artefactos del modelo se distribuirán de manera controlada, considerando los requisitos de hardware, seguridad y actualización de versiones.
 
@@ -176,16 +176,9 @@ El siguiente diagrama representa el pipeline MLOps end-to-end, desde la ingesti�
 | Evaluación de drift | Batch periódico | Programado | Evidently |
 | Reentrenamiento | Batch condicionado | Nuevos datos, degradación o evidencia médica | Airflow, MLflow |
 
-### 5.4. Decisiones arquitectónicas principales
 
-- **Batch frente a streaming:** se selecciona ingestión batch diaria porque los registros clínicos históricos no requieren procesamiento continuo. No se incorpora Kafka inicialmente, evitando complejidad operativa innecesaria.
-- **Procesamiento de datos:** se utiliza una arquitectura Medallion (Bronze, Silver y Gold), con MinIO como almacenamiento de objetos y Pandas/Pandera para las transformaciones y validaciones. Spark se contempla como alternativa si aumenta significativamente el volumen de datos.
-- **Inferencia online:** se utiliza FastAPI para responder solicitudes síncronas de los médicos. Los modelos y sus transformaciones se mantienen cargados en memoria.
-- **Despliegue:** GitHub Actions automatiza las pruebas y la publicación de imágenes Docker en GHCR. El despliegue en servidores clínicos requiere aprobación y permite regresar a una versión anterior.
-- **Infraestructura:** se prioriza una solución on-premises mediante Docker Compose, Nginx y contenedores FastAPI. Se contempla ejecución local en el computador del médico para modelos livianos.
-- **Independencia operativa:** las predicciones no dependen de la ejecución de Airflow, del Data Lake ni de MLflow. Estos componentes se utilizan fuera del proceso de inferencia.
+Los componentes y mecanismos de integración se detallan en las secciones 6 a 9. Las decisiones tecnológicas, sus justificaciones y las alternativas consideradas se consolidan en la sección 10.
 
-Las tecnologías, los mecanismos de integración, los controles de seguridad y las decisiones de implementación se detallan en las siguientes secciones.
 
 
 ## 6. Arquitectura de datos
@@ -522,15 +515,11 @@ La arquitectura presenta las siguientes limitaciones, que deberán evaluarse ant
 - **Dependencias externas:** GitHub y GHCR requieren conectividad y controles de acceso para los procesos de desarrollo y publicación, aunque la inferencia puede operar independientemente.
 - **Dimensionamiento:** los volúmenes, frecuencias y objetivos de rendimiento definidos son supuestos de diseño pendientes de validación mediante pruebas y levantamiento de requisitos.
 
+
 ### 10.3. Conclusiones
 
-La reestructuración de la arquitectura inicial permite evolucionar de una propuesta general de Machine Learning hacia un diseño MLOps con componentes, tecnologías, flujos de procesamiento y mecanismos de operación definidos.
+La arquitectura V2 evoluciona la propuesta inicial hacia un diseño MLOps reproducible, modular y trazable, con decisiones tecnológicas justificadas y mecanismos de operación definidos. Su implementación deberá realizarse progresivamente, validando los supuestos de infraestructura, rendimiento y confiabilidad clínica antes de su utilización en un entorno asistencial.
 
-La solución propuesta integra procesamiento batch de información clínica, experimentación y selección de modelos, despliegue versionado mediante CI/CD, inferencia online y monitoreo con reentrenamiento controlado.
-
-El enfoque modular facilita la trazabilidad, reproducibilidad y evolución de la solución, manteniendo la independencia entre los procesos de entrenamiento y el servicio de predicción.
-
-Su implementación deberá realizarse de forma progresiva, validando la infraestructura, los supuestos de dimensionamiento y la confiabilidad clínica de los modelos antes de su utilización en un entorno asistencial.
 
 
 

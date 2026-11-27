@@ -176,10 +176,20 @@ El siguiente diagrama representa el pipeline MLOps end-to-end, desde la ingesti�
 | Evaluación de drift | Batch periódico | Programado | Evidently |
 | Reentrenamiento | Batch condicionado | Nuevos datos, degradación o evidencia médica | Airflow, MLflow |
 
-
 Los componentes y mecanismos de integración se detallan en las secciones 6 a 9. Las decisiones tecnológicas, sus justificaciones y las alternativas consideradas se consolidan en la sección 10.
 
+### 5.4. Correspondencia entre las etapas del diagrama, el CHANGELOG y este documento
 
+| Etapa (diagrama y CHANGELOG) | Sección de este documento |
+|---|---|
+| 1. Data Ingestion | 6.1 |
+| 2. Data Processing & Feature Engineering | 6.2, 6.3 y 6.4 |
+| 3. Model Engineering & Registry | 7 |
+| 4. Model Deployment (CI/CD) | 8.1 |
+| 5. Serving & Prediction | 8.2 a 8.5 |
+| 6. Model Monitoring & Retraining | 9 |
+
+---
 
 ## 6. Arquitectura de datos
 
@@ -193,11 +203,11 @@ Se propone un procesamiento batch incremental diario, orquestado mediante Apache
 
 Se consideran las siguientes fuentes:
 
-- Historias clínicas electrónicas: síntomas, antecedentes, resultados clínicos y evolución del paciente.
-- Diagnósticos confirmados: etiquetas clínicas utilizadas como referencia para el entrenamiento y evaluación.
-- Información demográfica: edad y otras características relevantes y autorizadas.
-- Registros especializados: información de enfermedades huérfanas procedente de fuentes institucionales o registros autorizados.
-- Retroalimentación clínica: nuevos diagnósticos confirmados asociados a predicciones anteriores.
+- **Historias clínicas electrónicas:** síntomas, antecedentes, resultados clínicos y evolución del paciente.
+- **Diagnósticos confirmados:** etiquetas clínicas utilizadas como referencia para el entrenamiento y evaluación.
+- **Información demográfica:** edad y otras características relevantes y autorizadas.
+- **Registros especializados:** información de enfermedades huérfanas procedente de fuentes institucionales o registros autorizados.
+- **Retroalimentación clínica:** nuevos diagnósticos confirmados asociados a predicciones anteriores.
 
 Las predicciones del sistema no serán consideradas diagnósticos confirmados sin validación clínica.
 
@@ -209,11 +219,11 @@ La extracción se realizará a través de APIs institucionales, preferiblemente 
 
 El proceso contempla:
 
-1. Identificación de registros nuevos o modificados desde la última ejecución exitosa.
-2. Extracción y almacenamiento de datos originales en Bronze.
-3. Registro de metadatos de origen, fecha y ejecución.
-4. Verificación de integridad y detección de duplicados.
-5. Reintentos automáticos y alertas ante errores de extracción.
+- Identificación de registros nuevos o modificados desde la última ejecución exitosa.
+- Extracción y almacenamiento de datos originales en Bronze.
+- Registro de metadatos de origen, fecha y ejecución.
+- Verificación de integridad y detección de duplicados.
+- Reintentos automáticos y alertas ante errores de extracción.
 
 Se utilizarán identificadores únicos y marcas de actualización para permitir cargas idempotentes y evitar reprocesamientos innecesarios. Las fuentes que no permitan extracción incremental utilizarán cargas completas controladas.
 
@@ -257,6 +267,17 @@ Las transformaciones que aprenden parámetros de los datos se ajustarán exclusi
 
 **Consideraciones operativas:** MinIO requerirá gestión institucional de almacenamiento persistente, respaldos, recuperación, actualizaciones y soporte. La plataforma y su modalidad de soporte deberán validarse antes de su implementación productiva.
 
+### 6.5. Supuestos de esta etapa e implicaciones
+
+| Supuesto | Implicación si no se cumple |
+|---|---|
+| Las fuentes institucionales permiten extracción incremental (marcas de actualización o identificadores únicos). | Se realizarán cargas completas controladas, más lentas y costosas. |
+| Los datos son principalmente estructurados y el volumen inicial es de unos 500.000 registros. | Si el volumen o la complejidad crecen, será necesario migrar el procesamiento de Pandas a Spark. |
+| Los diagnósticos confirmados están disponibles y son confiables como etiquetas. | El entrenamiento y la evaluación pierden validez; habría que depurar o reetiquetar con apoyo clínico. |
+| Los pacientes cuentan con un identificador consistente entre registros y fuentes. | No se podría integrar el historial del paciente ni dividir los datos por paciente, aumentando el riesgo de fuga de información. |
+| La institución autoriza el uso de los datos para entrenamiento, previa seudonimización. | Sin autorización, no es posible construir los datasets de entrenamiento. |
+
+---
 
 ## 7. Arquitectura de Machine Learning
 
@@ -338,6 +359,17 @@ Los modelos candidatos serán comparados antes de su promoción al registro de m
 
 Solo las versiones que superen los criterios técnicos y la validación clínica podrán avanzar al proceso de CI/CD y despliegue descrito en la sección 8.
 
+### 7.6. Supuestos de esta etapa e implicaciones
+
+| Supuesto | Implicación si no se cumple |
+|---|---|
+| Las enfermedades huérfanas cuentan con entre 10 y 100 casos confirmados por enfermedad. | Con menos casos, el modelo no será confiable; se priorizarán alertas de sospecha y revisión clínica en lugar de predicciones automáticas. |
+| Existen especialistas clínicos disponibles para definir umbrales de desempeño y criterios de aprobación. | Sin ellos no hay criterio de aprobación y ningún modelo puede promoverse a producción. |
+| Los datos clínicos son principalmente tabulares y estructurados. | Si incluyeran imágenes o texto libre, se requerirían otros modelos y mayor capacidad de cómputo. |
+| El entrenamiento puede realizarse con los recursos del servidor institucional, sin GPU. | Si los modelos exigen más cómputo, habría que incorporar GPU o recursos adicionales. |
+| Las etiquetas de diagnóstico representan la condición real del paciente. | Etiquetas erróneas degradan el modelo y las métricas serían engañosas. |
+
+---
 
 ## 8. Arquitectura de despliegue y Serving
 
@@ -418,6 +450,17 @@ Su adopción dependerá de la capacidad del equipo, los controles de seguridad y
 
 La modalidad centralizada se mantiene como alternativa principal debido a las ventajas de administración, auditoría, monitoreo y actualización de los modelos.
 
+### 8.6. Supuestos de esta etapa e implicaciones
+
+| Supuesto | Implicación si no se cumple |
+|---|---|
+| La institución dispone de un servidor on-premises con red clínica restringida. | Habría que desplegar en la nube o recurrir a la modalidad de ejecución local. |
+| La carga es de hasta 2.000 solicitudes diarias, 20 concurrentes y latencia p95 inferior a 2 segundos. | Si la carga crece, se necesitarán más réplicas o servidores, y un orquestador distinto de Docker Compose. |
+| Existe conectividad hacia GitHub y GHCR para publicar y descargar imágenes. | Sin conectividad, el despliegue requeriría un registro de imágenes interno. |
+| Existe un responsable institucional que autoriza el despliegue de nuevas versiones. | Sin autorizaciones, las versiones aprobadas técnicamente no llegarían a producción. |
+| Los computadores de los médicos (modalidad local) cumplen requisitos de hardware y seguridad. | La modalidad local no sería viable y se usaría únicamente el despliegue centralizado. |
+
+---
 
 ## 9. Monitoreo y reentrenamiento
 
@@ -484,6 +527,17 @@ En caso de fallas o degradación posterior al despliegue, se ejecutará el proce
 
 El proceso de monitoreo y reentrenamiento será independiente del servicio de inferencia, de modo que las actividades de actualización no interrumpan las consultas médicas.
 
+### 9.5. Supuestos de esta etapa e implicaciones
+
+| Supuesto | Implicación si no se cumple |
+|---|---|
+| Los diagnósticos confirmados llegan con retraso respecto a la consulta médica. | La evaluación predictiva será periódica (mensual) y no inmediata; el monitoreo continuo se limita a datos y operación. |
+| Las enfermedades huérfanas tendrán muestras muy pequeñas en la evaluación. | Las variaciones pequeñas no se interpretarán como degradación; se reportará la incertidumbre de las métricas. |
+| Existe un equipo responsable de atender alertas y aprobar reentrenamientos. | Sin responsables, las alertas no generarían acciones y los modelos podrían degradarse sin ser detectados. |
+| Los registros de predicciones pueden vincularse con diagnósticos confirmados posteriores. | Sin ese vínculo, no es posible medir el desempeño real del modelo en producción. |
+| Los umbrales de drift y degradación se definen en la validación inicial con datos reales. | Sin umbrales, las alertas generarían demasiado ruido o pasarían inadvertidos problemas reales. |
+
+---
 
 ## 10. Decisiones arquitectónicas, limitaciones y conclusiones
 
@@ -515,12 +569,6 @@ La arquitectura presenta las siguientes limitaciones, que deberán evaluarse ant
 - **Dependencias externas:** GitHub y GHCR requieren conectividad y controles de acceso para los procesos de desarrollo y publicación, aunque la inferencia puede operar independientemente.
 - **Dimensionamiento:** los volúmenes, frecuencias y objetivos de rendimiento definidos son supuestos de diseño pendientes de validación mediante pruebas y levantamiento de requisitos.
 
-
 ### 10.3. Conclusiones
 
 La arquitectura V2 evoluciona la propuesta inicial hacia un diseño MLOps reproducible, modular y trazable, con decisiones tecnológicas justificadas y mecanismos de operación definidos. Su implementación deberá realizarse progresivamente, validando los supuestos de infraestructura, rendimiento y confiabilidad clínica antes de su utilización en un entorno asistencial.
-
-
-
-
-
